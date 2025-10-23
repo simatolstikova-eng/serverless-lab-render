@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 import pg8000
 import os
-from urllib.parse import urlparse
 
 app = Flask(__name__)
 
@@ -11,17 +10,31 @@ conn = None
 
 if DATABASE_URL:
     try:
-        url = urlparse(DATABASE_URL)
+        # Парсим DATABASE_URL вручную
+        # Формат: postgresql://user:pass@host:port/dbname
+        db_url = DATABASE_URL.replace("postgresql://", "").replace("postgres://", "")
+        auth, hostport_db = db_url.split("@")
+        user, password = auth.split(":")
+        hostport, database = hostport_db.split("/")
+        
+        if ":" in hostport:
+            host, port = hostport.split(":")
+            port = int(port)
+        else:
+            host = hostport
+            port = 5432  # стандартный порт PostgreSQL
+            
         conn = pg8000.connect(
-            database=url.path[1:],  # убираем первый символ '/'
-            user=url.username,
-            password=url.password,
-            host=url.hostname,
-            port=url.port
+            database=database,
+            user=user,
+            password=password,
+            host=host,
+            port=port
         )
         print("✅ Database connected successfully")
     except Exception as e:
         print(f"❌ Database connection failed: {e}")
+        print(f"DATABASE_URL: {DATABASE_URL}")
 else:
     print("❌ DATABASE_URL not found")
 
@@ -86,4 +99,4 @@ def get_messages():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)
