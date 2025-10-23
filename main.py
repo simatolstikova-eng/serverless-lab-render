@@ -67,11 +67,21 @@ def save_message():
         return jsonify({"error": "DB not connected"}), 500
 
     try:
+        # Проверяем, что это JSON запрос
+        if not request.is_json:
+            return jsonify({"error": "Content-Type must be application/json"}), 400
+        
         data = request.get_json()
-        if not data:
-            return jsonify({"error": "No JSON data provided"}), 400
+        
+        # Если JSON пустой или некорректный
+        if data is None:
+            return jsonify({"error": "Invalid JSON data"}), 400
             
         message = data.get('message', '')
+        
+        # Проверяем, что message есть
+        if not message:
+            return jsonify({"error": "Message field is required"}), 400
         
         with conn.cursor() as cur:
             cur.execute("INSERT INTO messages (content) VALUES (%s)", (message,))
