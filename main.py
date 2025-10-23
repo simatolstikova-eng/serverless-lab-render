@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import pg8000
 import os
+import json
 
 app = Flask(__name__)
 
@@ -11,7 +12,6 @@ conn = None
 if DATABASE_URL:
     try:
         # Парсим DATABASE_URL вручную
-        # Формат: postgresql://user:pass@host:port/dbname
         db_url = DATABASE_URL.replace("postgresql://", "").replace("postgres://", "")
         auth, hostport_db = db_url.split("@")
         user, password = auth.split(":")
@@ -22,7 +22,7 @@ if DATABASE_URL:
             port = int(port)
         else:
             host = hostport
-            port = 5432  # стандартный порт PostgreSQL
+            port = 5432
             
         conn = pg8000.connect(
             database=database,
@@ -34,7 +34,6 @@ if DATABASE_URL:
         print("✅ Database connected successfully")
     except Exception as e:
         print(f"❌ Database connection failed: {e}")
-        print(f"DATABASE_URL: {DATABASE_URL}")
 else:
     print("❌ DATABASE_URL not found")
 
@@ -63,23 +62,41 @@ def home():
 
 @app.route('/save', methods=['POST'])
 def save_message():
+    print("📨 Received POST request to /save")
+    
     if not conn:
         return jsonify({"error": "DB not connected"}), 500
 
     try:
-        # Проверяем, что это JSON запрос
+        # Логируем заголовки
+        print(f"📋 Headers: {dict(request.headers)}")
+        print(f"📦 Content-Type: {request.content_type}")
+        print(f"📦 Content-Length: {request.content_length}")
+        
+        # Проверяем Content-Type
         if not request.is_json:
-            return jsonify({"error": "Content-Type must be application/json"}), 400
+            print("❌ Not JSON content type")
+            return jsonify({
+                "error": "Content-Type must be application/json",
+                "received_content_type": request.content_type
+            }), 400
         
-        data = request.get_json()
+        # Пробуем получить JSON
+        data = request.get_json(force=True, silent=True)
+        print(f"📝 Raw data: {data}")
         
-        # Если JSON пустой или некорректный
         if data is None:
-            return jsonify({"error": "Invalid JSON data"}), 400
+            # Пробуем прочитать сырые данные
+            raw_data = request.get_data(as_text=True)
+            print(f"📝 Raw request data: '{raw_data}'")
+            return jsonify({
+                "error": "Invalid JSON data",
+                "raw_data_received": raw_data
+            }), 400
             
         message = data.get('message', '')
+        print(f"💾 Message to save: '{message}'")
         
-        # Проверяем, что message есть
         if not message:
             return jsonify({"error": "Message field is required"}), 400
         
@@ -87,9 +104,11 @@ def save_message():
             cur.execute("INSERT INTO messages (content) VALUES (%s)", (message,))
             conn.commit()
 
+        print("✅ Message saved successfully")
         return jsonify({"status": "saved", "message": message})
     
     except Exception as e:
+        print(f"❌ Error in save_message: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/messages')
